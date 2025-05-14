@@ -1,0 +1,6 @@
+venv
+data
+log_analyzer.log
+customer_logs
+customer_logs/shell-prod-mig-eks-logs
+state

@@ -1,0 +1,14 @@
+app:
+  log_levels:
+    - DEBUG
+    - ERROR
+    - INFO
+    - JOB
+    - NEW
+    - TEST
+    - TSAP
+    - UNKNOWN
+    - WARN
+    - FATAL
+  data_dir: data
+  state_dir: data

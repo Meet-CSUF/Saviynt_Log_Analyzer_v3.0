@@ -1,0 +1,17 @@
+file_path,before_error,after_error,before_warn,after_warn,before_info,after_info,before_debug,after_debug,before_trace,after_trace,before_fatal,after_fatal
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/RedisSessionRegistryService.groovy,0,0,0,0,0,0,4,4,0,0,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/ApplicationOwnerService.groovy,4,10,0,0,1,0,24,12,0,7,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/AuditUserLoginLogoutService.groovy,0,0,0,0,0,0,0,0,0,0,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/ExportToxlsService.groovy,16,26,0,0,0,42,133,44,2,39,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/EntitlementValueImportService.groovy,11,16,0,0,0,7,15,24,22,1,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/MulesoftAPIService.groovy,1,1,0,0,0,4,23,19,0,0,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/SystemImportService.groovy,1,4,0,0,0,4,11,0,0,4,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/AccountsImportService.groovy,8,12,0,0,0,22,34,15,13,6,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/DataAnalyzerService.groovy,2,2,0,0,0,0,4,3,0,1,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/ImportExternalDbService.groovy,33,33,0,0,5,42,145,80,7,33,0,2
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/SecuronixProvisioningService.groovy,0,0,0,0,0,2,2,0,0,0,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/LogUtilityService.groovy,0,0,0,0,0,20,20,0,0,0,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/AccountsService.groovy,3,12,0,0,0,12,27,1,0,5,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/SaviyntCodecService.groovy,0,0,0,0,0,0,0,0,0,0,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/ComponentService.groovy,0,0,0,0,0,0,0,0,0,0,0,0
+/Users/meetturakhia/IdeaProjects/ecmv4/grails-app/services/com/saviynt/ExternalConnectionTypeService.groovy,1,1,0,0,0,0,23,3,2,22,0,0
