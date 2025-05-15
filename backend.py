@@ -642,6 +642,16 @@ async def start_job(request: StartJobRequest):
             start_time,
             start_time
         ))
+        # Store start_datetime and end_datetime for S3 jobs in job_metadata
+        if request.customer_folder and request.start_datetime and request.end_datetime:
+            conn.execute('''
+                INSERT OR IGNORE INTO job_metadata (job_id, type, value)
+                VALUES (?, ?, ?)
+            ''', (job_id, 'start_datetime', request.start_datetime))
+            conn.execute('''
+                INSERT OR IGNORE INTO job_metadata (job_id, type, value)
+                VALUES (?, ?, ?)
+            ''', (job_id, 'end_datetime', request.end_datetime))
         conn.commit()
         conn.close()
         

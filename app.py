@@ -11,8 +11,9 @@ from analyzer.visualizer import Visualizer
 from analyzer.data_manager import export_to_excel, get_analysis_data, init_db
 from retrying import retry
 import os
-import subprocess
 import re
+import boto3
+from botocore.exceptions import ClientError, NoCredentialsError
 
 # Configure logging
 logging.basicConfig(
@@ -73,6 +74,10 @@ def initialize_session_state():
         st.session_state.log_viewer_last_job_id = None
     if 'customer_folders' not in st.session_state:
         st.session_state.customer_folders = []
+    if 'customer_folders_page' not in st.session_state:
+        st.session_state.customer_folders_page = 1
+    if 'customer_folders_per_page' not in st.session_state:
+        st.session_state.customer_folders_per_page = 100
 
 @retry(stop_max_attempt_number=3, wait_exponential_multiplier=1000, wait_exponential_max=10000)
 def check_backend_health():
@@ -223,6 +228,12 @@ def apply_custom_css():
             transform: scale(1.05);
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
         }
+        .stButton>button:disabled {
+            background: #6B7280;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
         .sidebar .stButton>button {
             width: 100%;
             margin-bottom: 1rem;
@@ -325,6 +336,8 @@ def apply_custom_css():
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 1.5rem;
             padding: 1rem;
+            max-height: 500px;
+            overflow-y: auto;
         }
         .folder-card {
             background: rgba(255, 255, 255, 0.95);
@@ -1053,66 +1066,34 @@ def display_csv_notifications():
         st.experimental_rerun()
 
 def list_s3_customer_folders():
-    """Execute AWS S3 ls command to list customer folders in s3://k8-customer-logs."""
+    """List customer folders in s3://k8-customer-logs using boto3."""
     try:
-        logger.info("Executing AWS S3 ls command for s3://k8-customer-logs")
-        # Run the aws s3 ls command
-        result = subprocess.run(
-            ['aws', 's3', 'ls', 's3://k8-customer-logs'],
-            capture_output=True,
-            text=True,
-            timeout=30
+        logger.info("Listing customer folders in s3://k8-customer-logs using boto3")
+        # Initialize boto3 S3 client
+        s3_client = boto3.client('s3')
+        bucket_name = 'k8-customer-logs'
+        
+        # List top-level prefixes (folders) in the bucket
+        folders = []
+        paginator = s3_client.get_paginator('list_objects_v2')
+        page_iterator = paginator.paginate(
+            Bucket=bucket_name,
+            Delimiter='/',
+            PaginationConfig={'PageSize': 1000}
         )
         
-        # Check if the command was successful
-        if result.returncode != 0:
-            error_message = result.stderr.strip()
-            logger.error(f"AWS S3 ls command failed: {error_message}")
-            if "AccessDenied" in error_message:
-                st.session_state.notifications.append({
-                    'type': 'error',
-                    'message': "Permission denied accessing S3 bucket. Check EC2 IAM role permissions.",
-                    'timestamp': time.time()
-                })
-            elif "NoSuchBucket" in error_message:
-                st.session_state.notifications.append({
-                    'type': 'error',
-                    'message': "S3 bucket 'k8-customer-logs' not found.",
-                    'timestamp': time.time()
-                })
-            else:
-                st.session_state.notifications.append({
-                    'type': 'error',
-                    'message': f"Failed to list customer folders: {error_message}",
-                    'timestamp': time.time()
-                })
-            return []
+        for page in page_iterator:
+            prefixes = page.get('CommonPrefixes', [])
+            for prefix in prefixes:
+                folder_name = prefix.get('Prefix', '').rstrip('/')
+                if folder_name:
+                    folders.append(folder_name)
         
-        # Parse the output
-        output = result.stdout.strip()
-        if not output:
+        if not folders:
             logger.warning("No customer folders found in s3://k8-customer-logs")
             st.session_state.notifications.append({
                 'type': 'warning',
                 'message': "No customer folders found in the S3 bucket.",
-                'timestamp': time.time()
-            })
-            return []
-        
-        # Extract folder names (removing trailing '/' and 'PRE' prefix)
-        folders = []
-        for line in output.splitlines():
-            # Example output: "2023-05-13 10:15:32 PRE customer1/"
-            parts = line.strip().split()
-            if parts and parts[-1].endswith('/'):
-                folder_name = parts[-1].rstrip('/')
-                folders.append(folder_name)
-        
-        if not folders:
-            logger.warning("No valid customer folders found in S3 bucket output")
-            st.session_state.notifications.append({
-                'type': 'warning',
-                'message': "No valid customer folders found in the S3 bucket.",
                 'timestamp': time.time()
             })
             return []
@@ -1125,21 +1106,36 @@ def list_s3_customer_folders():
         })
         return sorted(folders)  # Sort for consistent display
     
-    except subprocess.TimeoutExpired:
-        logger.error("AWS S3 ls command timed out after 30 seconds")
+    except NoCredentialsError:
+        logger.error("AWS credentials not found or invalid")
         st.session_state.notifications.append({
             'type': 'error',
-            'message': "Request to list customer folders timed out. Check network connectivity.",
+            'message': "AWS credentials not found. Please configure AWS credentials.",
             'timestamp': time.time()
         })
         return []
-    except FileNotFoundError:
-        logger.error("AWS CLI not found on the system")
-        st.session_state.notifications.append({
-            'type': 'error',
-            'message': "AWS CLI is not installed on the EC2 instance. Please install it.",
-            'timestamp': time.time()
-        })
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        logger.error(f"S3 ClientError: {error_code} - {error_message}")
+        if error_code == 'AccessDenied':
+            st.session_state.notifications.append({
+                'type': 'error',
+                'message': "Permission denied accessing S3 bucket. Check IAM role permissions.",
+                'timestamp': time.time()
+            })
+        elif error_code == 'NoSuchBucket':
+            st.session_state.notifications.append({
+                'type': 'error',
+                'message': "S3 bucket 'k8-customer-logs' not found.",
+                'timestamp': time.time()
+            })
+        else:
+            st.session_state.notifications.append({
+                'type': 'error',
+                'message': f"Failed to list customer folders: {error_message}",
+                'timestamp': time.time()
+            })
         return []
     except Exception as e:
         logger.error(f"Unexpected error listing S3 customer folders: {str(e)}")
@@ -1149,6 +1145,91 @@ def list_s3_customer_folders():
             'timestamp': time.time()
         })
         return []
+
+def get_job_date_range(job_id: str, folder_path: str) -> tuple:
+    """Fetch or compute the date range for a job based on job type."""
+    try:
+        if folder_path.startswith('s3://'):
+            # S3 job: Fetch from job_metadata
+            conn = sqlite3.connect('data/logs.db', timeout=30)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT type, value FROM job_metadata
+                WHERE job_id = ? AND type IN ('start_datetime', 'end_datetime')
+                """,
+                (job_id,)
+            )
+            metadata = {row[0]: row[1] for row in cursor.fetchall()}
+            conn.close()
+            
+            start_datetime = metadata.get('start_datetime')
+            end_datetime = metadata.get('end_datetime')
+            
+            if start_datetime and end_datetime:
+                try:
+                    start_dt = datetime.strptime(start_datetime, '%Y%m%d-%H')
+                    end_dt = datetime.strptime(end_datetime, '%Y%m%d-%H')
+                    return (
+                        start_dt.strftime('%Y-%m-%d %H:00'),
+                        end_dt.strftime('%Y-%m-%d %H:00')
+                    )
+                except ValueError as e:
+                    logger.error(f"Error parsing S3 datetime for job_id {job_id}: {str(e)}")
+                    st.session_state.notifications.append({
+                        'type': 'error',
+                        'message': f"Invalid date format in metadata: {str(e)}",
+                        'timestamp': time.time()
+                    })
+            return "N/A", "N/A"
+        else:
+            # Local job: Scan subfolders for YYYYMMDD-HH pattern
+            if not os.path.isdir(folder_path):
+                logger.warning(f"Folder path {folder_path} is not a valid directory for job_id {job_id}")
+                st.session_state.notifications.append({
+                    'type': 'warning',
+                    'message': f"Invalid folder path for job {job_id}",
+                    'timestamp': time.time()
+                })
+                return "N/A", "N/A"
+            
+            date_pattern = r'^\d{8}-\d{2}$'
+            dates = []
+            
+            # Iterate over subfolders in the folder_path
+            for subfolder in os.listdir(folder_path):
+                subfolder_path = os.path.join(folder_path, subfolder)
+                if os.path.isdir(subfolder_path) and re.match(date_pattern, subfolder):
+                    try:
+                        dt = datetime.strptime(subfolder, '%Y%m%d-%H')
+                        dates.append(dt)
+                    except ValueError:
+                        logger.debug(f"Skipping invalid folder name {subfolder} in {folder_path}")
+                        continue
+            
+            if not dates:
+                logger.warning(f"No valid YYYYMMDD-HH folders found in {folder_path} for job_id {job_id}")
+                st.session_state.notifications.append({
+                    'type': 'warning',
+                    'message': f"No valid date-time folders found in {folder_path}",
+                    'timestamp': time.time()
+                })
+                return "N/A", "N/A"
+            
+            start_dt = min(dates)
+            end_dt = max(dates)
+            return (
+                start_dt.strftime('%Y-%m-%d %H:00'),
+                end_dt.strftime('%Y-%m-%d %H:00')
+            )
+    except Exception as e:
+        logger.error(f"Error getting date range for job_id {job_id}: {str(e)}")
+        st.session_state.notifications.append({
+            'type': 'error',
+            'message': f"Error getting date range for job {job_id}: {str(e)}",
+            'timestamp': time.time()
+        })
+        return "N/A", "N/A"
 
 def update_selected_job_id():
     """Update selected job ID in session state for Log Analysis tab."""
@@ -1258,6 +1339,8 @@ def main():
         with st.container():
             if st.session_state.selected_job_id and not job_status_df.empty:
                 job_info = job_status_df[job_status_df['job_id'] == st.session_state.selected_job_id].iloc[0]
+                # Get date range for the job
+                start_date_hour, end_date_hour = get_job_date_range(job_info['job_id'], job_info.get('folder_path', 'N/A'))
                 st.markdown(
                     f"""
                     <div class="card">
@@ -1268,6 +1351,8 @@ def main():
                         <p><strong>Files Processed:</strong> {job_info.get('files_processed', 0)} / {job_info.get('total_files', 0)}</p>
                         <p><strong>Start Time:</strong> {job_info.get('start_time', 'N/A')}</p>
                         <p><strong>Last Updated:</strong> {job_info.get('last_updated', 'N/A')}</p>
+                        <p><strong>Start Date and Hour:</strong> {start_date_hour}</p>
+                        <p><strong>End Date and Hour:</strong> {end_date_hour}</p>
                     </div>
                     """,
                     unsafe_allow_html=True
@@ -1580,6 +1665,8 @@ def main():
                 folders = list_s3_customer_folders()
                 # Store folders in session state for display
                 st.session_state.customer_folders = folders
+                # Reset pagination
+                st.session_state.customer_folders_page = 1
         st.markdown('<span class="tooltiptext">Lists all customer folders in the S3 bucket s3://k8-customer-logs</span></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
@@ -1587,14 +1674,37 @@ def main():
         if 'customer_folders' in st.session_state and st.session_state.customer_folders:
             st.markdown('<div class="card">', unsafe_allow_html=True)
             st.subheader(f"Customer Folders ({len(st.session_state.customer_folders)})")
+            
+            # Pagination controls
+            total_folders = len(st.session_state.customer_folders)
+            folders_per_page = st.session_state.customer_folders_per_page
+            total_pages = max(1, (total_folders + folders_per_page - 1) // folders_per_page)
+            
+            col1, col2, col3 = st.columns([2, 3, 2])
+            with col1:
+                if st.button("Previous Page", key="prev_page_folders", disabled=st.session_state.customer_folders_page == 1):
+                    st.session_state.customer_folders_page = max(1, st.session_state.customer_folders_page - 1)
+            with col2:
+                st.markdown(f"<p style='text-align: center; margin-top: 8px;'>Page {st.session_state.customer_folders_page} of {total_pages}</p>", unsafe_allow_html=True)
+            with col3:
+                if st.button("Next Page", key="next_page_folders", disabled=st.session_state.customer_folders_page == total_pages):
+                    st.session_state.customer_folders_page = min(total_pages, st.session_state.customer_folders_page + 1)
+            
+            # Calculate folder range for current page
+            start_idx = (st.session_state.customer_folders_page - 1) * folders_per_page
+            end_idx = min(start_idx + folders_per_page, total_folders)
+            paginated_folders = st.session_state.customer_folders[start_idx:end_idx]
+            
             # Create a responsive grid of folder cards
             st.markdown('<div class="folder-grid">', unsafe_allow_html=True)
-            for folder in st.session_state.customer_folders:
+            for folder in paginated_folders:
+                # Sanitize folder name to avoid HTML injection
+                safe_folder = html.escape(folder)
                 # Use folder name as key to ensure uniqueness
                 st.markdown(
                     f"""
-                    <div class="folder-card" key="folder_{folder}">
-                        <h3>{folder}</h3>
+                    <div class="folder-card" key="folder_{safe_folder}">
+                        <h3>{safe_folder}</h3>
                     </div>
                     """,
                     unsafe_allow_html=True

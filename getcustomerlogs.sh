@@ -63,7 +63,7 @@ while [[ "$current_date" -le "$end_date" ]]; do
 
     for hour in $(seq -w $hour_start $hour_end); do
         s3_prefix="${customer}/${current_date}-${hour}/"
-        local_dir="./customer_logs/${customer}/${current_date}-${hour}/"
+        local_dir="./customer_logs/${current_date}-${hour}/"
         echo "Fetching logs from: s3://${bucket}/${s3_prefix} to ${local_dir}"
         mkdir -p "$local_dir"
         aws s3 cp "s3://${bucket}/${s3_prefix}" "$local_dir" --recursive
