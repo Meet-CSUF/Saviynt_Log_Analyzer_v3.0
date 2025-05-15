@@ -79,6 +79,10 @@ def initialize_session_state():
         st.session_state.customer_folders_page = 1
     if 'customer_folders_per_page' not in st.session_state:
         st.session_state.customer_folders_per_page = 100
+    if 'customer_folders_search' not in st.session_state:
+        st.session_state.customer_folders_search = ""
+    if 'filtered_customer_folders' not in st.session_state:
+        st.session_state.filtered_customer_folders = []
 
 @retry(stop_max_attempt_number=3, wait_exponential_multiplier=1000, wait_exponential_max=10000)
 def check_backend_health():
@@ -372,12 +376,60 @@ def apply_custom_css():
             margin-bottom: 0.5rem;
             opacity: 0.7;
         }
+        .search-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 0.75rem;
+            border: 1px solid #D1D5DB;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .search-container input {
+            flex-grow: 1;
+            border: none;
+            background: transparent;
+            padding: 0.5rem;
+            font-size: 1rem;
+            outline: none;
+        }
+        .search-container input:focus {
+            outline: none;
+        }
+        .search-container button {
+            background: linear-gradient(90deg, #12133f, #2A2B5A);
+            color: #FFFFFF;
+            border: none;
+            border-radius: 8px;
+            padding: 0.5rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, background 0.3s, box-shadow 0.3s;
+        }
+        .search-container button:hover {
+            background: linear-gradient(90deg, #2A2B5A, #12133f);
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
         @media (max-width: 640px) {
             .folder-grid {
                 grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             }
             .folder-card h3 {
                 font-size: 1rem;
+            }
+            .search-container {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+            .search-container input {
+                width: 100%;
+            }
+            .search-container button {
+                width: 100%;
             }
         }
         @keyframes slideIn {
@@ -989,7 +1041,7 @@ def process_csv_files(uploaded_files):
             logger.error(f"Error processing CSV {file.name}: {str(e)}")
             st.session_state.csv_notifications.append({
                 'type': 'error',
-                'message': f"Error processing CSV {file.name}: {str(e)}",
+                'message': f"Error processing CSV {filePitcher: {str(e)}}",
                 'timestamp': time.time()
             })
     return csv_data
@@ -1147,6 +1199,50 @@ def list_s3_customer_folders():
         })
         return []
 
+def search_customer_folders(search_query):
+    """Filter customer folders based on search query."""
+    try:
+        if not st.session_state.customer_folders:
+            logger.debug("No customer folders to search")
+            st.session_state.filtered_customer_folders = []
+            return
+
+        search_query = search_query.strip().lower()
+        if not search_query:
+            st.session_state.filtered_customer_folders = st.session_state.customer_folders
+            logger.debug("Empty search query, showing all folders")
+            return
+
+        # Perform case-insensitive search
+        filtered_folders = [
+            folder for folder in st.session_state.customer_folders
+            if search_query in folder.lower()
+        ]
+        st.session_state.filtered_customer_folders = filtered_folders
+        logger.info(f"Search query '{search_query}' returned {len(filtered_folders)} folders")
+
+        if not filtered_folders:
+            st.session_state.notifications.append({
+                'type': 'warning',
+                'message': f"No customer folders found matching '{search_query}'.",
+                'timestamp': time.time()
+            })
+        else:
+            st.session_state.notifications.append({
+                'type': 'success',
+                'message': f"Found {len(filtered_folders)} customer folders matching '{search_query}'.",
+                'timestamp': time.time()
+            })
+
+    except Exception as e:
+        logger.error(f"Error searching customer folders: {str(e)}")
+        st.session_state.notifications.append({
+            'type': 'error',
+            'message': f"Error searching customer folders: {str(e)}",
+            'timestamp': time.time()
+        })
+        st.session_state.filtered_customer_folders = []
+
 def get_job_date_range(job_id: str, folder_path: str) -> tuple:
     """Fetch or compute the date range for a job based on job type."""
     try:
@@ -1292,14 +1388,14 @@ def main():
     check_backend_health()
 
     st.markdown(
-    """
-    <div class="header">
-        <h1 style="color: rgb(255, 75, 75);">Saviynt Log Analyzer v3.0</h1>
-        <p>Unleash the Power of Log Analytics with Unmatched Precision</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        """
+        <div class="header">
+            <h1 style="color: rgb(255, 75, 75);">Saviynt Log Analyzer v3.0</h1>
+            <p>Unleash the Power of Log Analytics with Unmatched Precision</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Log Analysis", "🔍 Log Viewer", "📈 CSV Visualization", "📂 Customer Folders"])
 
@@ -1666,18 +1762,43 @@ def main():
                 folders = list_s3_customer_folders()
                 # Store folders in session state for display
                 st.session_state.customer_folders = folders
-                # Reset pagination
+                # Initialize filtered folders
+                st.session_state.filtered_customer_folders = folders
+                # Reset pagination and search
                 st.session_state.customer_folders_page = 1
+                st.session_state.customer_folders_search = ""
         st.markdown('<span class="tooltiptext">Lists all customer folders in the S3 bucket s3://k8-customer-logs</span></div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Display folders if available
         if 'customer_folders' in st.session_state and st.session_state.customer_folders:
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader(f"Customer Folders ({len(st.session_state.customer_folders)})")
+            st.subheader(f"Customer Folders ({len(st.session_state.filtered_customer_folders)})")
+            
+            # Search bar
+            st.markdown('<div class="search-container">', unsafe_allow_html=True)
+            search_query = st.text_input(
+                "Search Customer Folders",
+                value=st.session_state.customer_folders_search,
+                placeholder="Enter folder name...",
+                key="folder_search",
+                help="Search for customer folders by name (case-insensitive)"
+            )
+            if st.button("Search", key="search_folders"):
+                if len(search_query) < 2 and search_query.strip():
+                    st.session_state.notifications.append({
+                        'type': 'warning',
+                        'message': "Search query must be at least 2 characters long.",
+                        'timestamp': time.time()
+                    })
+                else:
+                    st.session_state.customer_folders_search = search_query
+                    st.session_state.customer_folders_page = 1  # Reset pagination on search
+                    search_customer_folders(search_query)
+            st.markdown('</div>', unsafe_allow_html=True)
             
             # Pagination controls
-            total_folders = len(st.session_state.customer_folders)
+            total_folders = len(st.session_state.filtered_customer_folders)
             folders_per_page = st.session_state.customer_folders_per_page
             total_pages = max(1, (total_folders + folders_per_page - 1) // folders_per_page)
             
@@ -1694,9 +1815,9 @@ def main():
             # Calculate folder range for current page
             start_idx = (st.session_state.customer_folders_page - 1) * folders_per_page
             end_idx = min(start_idx + folders_per_page, total_folders)
-            paginated_folders = st.session_state.customer_folders[start_idx:end_idx]
+            paginated_folders = st.session_state.filtered_customer_folders[start_idx:end_idx]
             
-            # Create a responsive grid of folder cards
+             # Create a responsive grid of folder cards
             st.markdown('<div class="folder-grid">', unsafe_allow_html=True)
             for folder in paginated_folders:
                 # Sanitize folder name to avoid HTML injection
@@ -1704,19 +1825,20 @@ def main():
                 # Use folder name as key to ensure uniqueness
                 st.markdown(
                     f"""
-                    <div class="folder-card" key="folder_{safe_folder}">
+                    <div class="folder-card" onclick="window.location.href='#'">
                         <h3>{safe_folder}</h3>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)  # Close folder-grid
+            st.markdown('</div>', unsafe_allow_html=True)  # Close card
+    
         else:
-            st.info("Click 'List Customer Folders' to retrieve the list of customer folders from S3.")
-        
+            st.info("No customer folders loaded. Click 'List Customer Folders' to fetch folders from S3.")
+
         display_notifications()
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)  # Close tab-content
 
 if __name__ == "__main__":
     main()
