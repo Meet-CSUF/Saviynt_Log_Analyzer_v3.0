@@ -326,22 +326,22 @@ class LogAnalyzer:
             analysis_tasks = [
                 ('class_level_counts', lambda: ddf.groupby(['class', 'level'])
                     .size().compute().unstack(fill_value=0).reset_index()),
-                ('level_summary', lambda: ddf.level.value_counts().compute()),
-                ('class_summary', lambda: ddf.groupby('class').size().compute()),
-                ('pod_summary', lambda: ddf.groupby('pod').size().compute()),
-                ('container_summary', lambda: ddf.groupby('container').size().compute()),
-                ('host_summary', lambda: ddf.groupby('host').size().compute()),
-                ('class_level_pod', lambda: ddf.groupby(['class', 'pod', 'level'])
-                    .size().compute().unstack(fill_value=0).reset_index()),
-                ('hourly_level_counts', lambda: ddf.groupby(['hour', 'level'])
-                    .size().compute().unstack(fill_value=0).reset_index()),
-                ('thread_summary', lambda: ddf.groupby('thread').size().compute()),
-                ('error_analysis', lambda: ddf[ddf.level == 'ERROR']
-                    .groupby(['class', 'pod']).size().compute().sort_values(ascending=False)),
-                ('time_range', lambda: pd.DataFrame([{
-                    'start_time': ddf['parsed_timestamp'].min().compute(),
-                    'end_time': ddf['parsed_timestamp'].max().compute()
-                }]))
+                # ('level_summary', lambda: ddf.level.value_counts().compute()),
+                # ('class_summary', lambda: ddf.groupby('class').size().compute()),
+                # ('pod_summary', lambda: ddf.groupby('pod').size().compute()),
+                # ('container_summary', lambda: ddf.groupby('container').size().compute()),
+                # ('host_summary', lambda: ddf.groupby('host').size().compute()),
+                # ('class_level_pod', lambda: ddf.groupby(['class', 'pod', 'level'])
+                #     .size().compute().unstack(fill_value=0).reset_index()),
+                # ('hourly_level_counts', lambda: ddf.groupby(['hour', 'level'])
+                #     .size().compute().unstack(fill_value=0).reset_index()),
+                # ('thread_summary', lambda: ddf.groupby('thread').size().compute()),
+                # ('error_analysis', lambda: ddf[ddf.level == 'ERROR']
+                #     .groupby(['class', 'pod']).size().compute().sort_values(ascending=False)),
+                # ('time_range', lambda: pd.DataFrame([{
+                #     'start_time': ddf['parsed_timestamp'].min().compute(),
+                #     'end_time': ddf['parsed_timestamp'].max().compute()
+                # }]))
             ]
 
             with tqdm(total=len(analysis_tasks), desc="Generating analyses") as pbar:
